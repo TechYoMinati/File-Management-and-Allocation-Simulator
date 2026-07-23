@@ -1,6 +1,6 @@
 # File-Management-and-Allocation-Simulator
 OS Diploma Project (File-Management-&amp;-Allocation-Simulator)
-# 🗂️ Virtual File Manager + File Allocation Simulator
+# 🗂️ File Management Simulator + File Allocation Simulator
 
 > **An Operating Systems educational project** — a GUI-based "virtual disk" that lets you create, edit and delete real files, and **watch, block-by-block, how an Operating System physically stores them on disk** using the three classic file allocation methods: **Contiguous**, **Linked**, and **Indexed** allocation.
 
