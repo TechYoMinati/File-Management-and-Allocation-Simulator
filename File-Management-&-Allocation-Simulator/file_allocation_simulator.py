@@ -23,16 +23,16 @@
 
  DESIGN    : Modern dark "glassmorphism" theme with neon accents and a live
              RGB colour-cycling (animated gradient) title + accents.
-             CURSOR ANIMATION ENGINE (BALANCED MODE - easy on the eyes):
+             CURSOR ANIMATION ENGINE (balanced mode - easy on the eyes):
                - moving the mouse leaves a subtle theme-coloured glow trail
                - clicking fires one soft ripple ring + a few gentle sparks
                - holding the button breathes a slow pulse under the cursor
                - releasing the button instantly stops and fades the effects
                - every clickable button also "press-flashes" in sync
-             TYPING FX (new):
+             TYPING FX:
                - typing in any text field flashes a neon border glow that
                  fades back smoothly + pops a tiny spark at the caret
-             SOUND FX v2 (zero external files - synthesised at start-up):
+             SOUND FX (zero external files - synthesised at start-up):
                - soft mechanical keyboard "tick" on every real keystroke
                - snappy mouse "click" on every clickable control
                - powered by a PERSISTENT-STREAM MIXER: one audio stream
@@ -46,9 +46,26 @@
  HOW TO MAKE THE .EXE (Windows):
      pip install pyinstaller
      pyinstaller --onefile --windowed --name "VirtualFileManager" file_allocation_simulator.py
+
 ================================================================================
- The code is divided PHASE-WISE with detailed comments so you can explain
- every part to your examiner step by step.
+ CODE MAP - the file is organised PHASE-WISE, top to bottom:
+================================================================================
+   PHASE 0       Imports (standard library only - no pip installs)
+   PHASE 1       VirtualDisk        - the disk data model (pure OS logic)
+   PHASE 2       The 3 allocation algorithms (contiguous / linked / indexed)
+   PHASE 3       GUI theme constants + colour helpers
+   PHASE 3-SND   SoundFX            - the persistent-stream sound engine
+   PHASE 3-FX    CursorFX           - the cursor particle animation engine
+   PHASE 3-STYLE ttk dark-theme styling
+   PHASE 3A-3D   Menu bar, header, main body layout, activity log
+   PHASE 4       Live size meter    (bytes typed -> blocks needed, real time)
+   PHASE 5       Event handlers     (save / open / delete / compare ...)
+   PHASE 6       Disk-grid drawing, stats and file table rendering
+   PHASE 7-7B    Help system + About window
+   PHASE 8       Program entry point
+
+ Every phase begins with a banner comment explaining WHAT it does and WHY,
+ so the code can be read (and explained to an examiner) top to bottom.
 """
 
 # ==============================================================================
@@ -107,6 +124,7 @@ class VirtualDisk:
         return [i for i, owner in enumerate(self.blocks) if owner is None]
 
     def free_count(self):
+        """How many blocks are still free on the disk."""
         return len(self.free_blocks())
 
     @staticmethod
@@ -330,32 +348,39 @@ def _hsv_hex(h, s=1.0, v=1.0):
 
 
 # ==============================================================================
-# PHASE 3-SND : THE SOUND ENGINE v2  (persistent-stream mixer)
+# PHASE 3-SND : THE SOUND ENGINE  (persistent-stream mixer)
 # ------------------------------------------------------------------------------
-# WHY THE REDESIGN? The old "fire a .wav per event" approach had 3 fatal bugs:
+# WHAT IT DOES (non-technical): plays a soft keyboard "tick" for every
+# keystroke and a snappy "click" for every button press - with zero external
+# sound files and zero pip installs. Both sounds are mathematically
+# synthesised in memory when the app starts.
 #
-#   BUG 1: winsound.PlaySound(SND_ASYNC) CANCELS whatever is currently playing
-#          each time it is called. Fast typing = every new tick killed the
-#          previous one mid-play -> sounds randomly "dropped".
-#   BUG 2: Windows suspends the audio endpoint after a short idle period.
-#          A 45 ms tick finished BEFORE the device woke up -> total silence
-#          until the user wiggled the system volume (whose beep wakes the
-#          device) -> sound worked "for a few seconds", then died again.
-#   BUG 3: any single transient playback error set enabled=False FOREVER.
+# WHY A PERSISTENT-STREAM MIXER (technical design rationale):
+# A naive "play one .wav per event" approach fails in three well-known ways,
+# so this engine is deliberately built around ONE always-open audio stream:
 #
-# NEW DESIGN (still zero external files / zero pip installs):
-#   * Both samples are synthesised ONCE at start-up into in-memory PCM arrays.
-#   * A daemon MIXER THREAD keeps ONE audio stream open for the whole app
-#     lifetime and continuously feeds it small chunks (silence when idle).
-#       -> the device NEVER sleeps            (fixes BUG 2)
-#       -> overlapping sounds are MIXED, not cancelled  (fixes BUG 1)
-#   * Errors are retried; the engine never mutes itself permanently
-#     unless the backend is truly gone         (fixes BUG 3)
-#   * Backends (auto-detected, best first):
-#       - Windows : winmm.dll waveOut* streaming via ctypes (built-in)
-#       - Linux   : ONE persistent `pacat` / `aplay` process fed raw PCM
-#       - macOS   : `afplay` per event (afplay cannot stream), overlapping
-#                   players allowed so nothing is ever cancelled
+#   PROBLEM 1: one-shot async players (e.g. winsound SND_ASYNC) cancel the
+#              currently playing sound on every new call -> fast typing
+#              would randomly drop ticks mid-play.
+#     SOLUTION: overlapping sounds are software-MIXED into one stream, so
+#               nothing is ever cancelled.
+#
+#   PROBLEM 2: Windows suspends the audio endpoint after a short idle
+#              period; a 45 ms tick can finish before the device wakes,
+#              producing silence.
+#     SOLUTION: a daemon MIXER THREAD keeps the stream open for the whole
+#               session and feeds it small chunks (silence when idle), so
+#               the audio device never sleeps.
+#
+#   PROBLEM 3: a single transient playback error must not mute the app.
+#     SOLUTION: errors are retried; the engine only disables itself if the
+#               audio backend is truly unavailable.
+#
+# BACKENDS (auto-detected at start-up, best first):
+#   - Windows : winmm.dll waveOut* streaming via ctypes (built into Windows)
+#   - Linux   : ONE persistent `pacat` / `aplay` process fed raw PCM
+#   - macOS   : `afplay` per event (afplay cannot stream); overlapping
+#               players are allowed so nothing is ever cancelled
 # ==============================================================================
 class SoundFX:
     RATE = 22050          # sample rate (Hz)
@@ -690,7 +715,8 @@ class CursorFX:
 
     def _make_click_through(self):
         """Windows API: WS_EX_TRANSPARENT makes the overlay ignore ALL mouse
-        input, so hovering / clicking works exactly like before."""
+        input, so hovering / clicking passes straight through to the real
+        widgets underneath - the overlay is purely visual."""
         try:
             import ctypes
             self.overlay.update_idletasks()
@@ -729,6 +755,7 @@ class CursorFX:
             return None
 
     def _inside(self, x, y):
+        """Is the point (x, y) inside the drawing surface? (canvas coords)"""
         return (0 <= x <= self.canvas.winfo_width()
                 and 0 <= y <= self.canvas.winfo_height())
 
@@ -736,6 +763,8 @@ class CursorFX:
     # PARTICLE SPAWNERS
     # ==========================================================================
     def _spawn(self, **p):
+        """Add one particle (a dict of properties) - capped so the UI
+        always stays responsive no matter how fast the user clicks."""
         if len(self.particles) < self.MAX_PARTICLES:
             self.particles.append(p)
 
@@ -2154,6 +2183,7 @@ class FileManagerApp:
                            fill=txt_col, font=("Segoe UI", 9, "bold"))
 
     def _update_stats(self):
+        """Refresh the usage line under the disk grid (used/free + legend)."""
         used = self.disk.total_blocks - self.disk.free_count()
         pct = round(used / self.disk.total_blocks * 100)
         self.stats.config(
@@ -2163,6 +2193,8 @@ class FileManagerApp:
                  f"\u25A0 = end of chain (EOF)")
 
     def _refresh_table(self):
+        """Rebuild the file-manager table from the disk's directory,
+        applying the live search filter if one is typed."""
         self.tree.delete(*self.tree.get_children())
         # live search filter: only show files whose name contains the query
         query = ""
@@ -2179,11 +2211,15 @@ class FileManagerApp:
             self._multi_wrap.pack_forget()
 
     def _refresh_all(self):
+        """One call to bring EVERY view back in sync with the disk state:
+        the block grid, the usage stats and the file table."""
         self._draw_disk()
         self._update_stats()
         self._refresh_table()
 
     def _log(self, msg):
+        """Append one line to the terminal-style activity log and scroll
+        it into view - the app narrates every action through this."""
         self.log.insert("end", "> " + msg + "\n")
         self.log.see("end")
 
