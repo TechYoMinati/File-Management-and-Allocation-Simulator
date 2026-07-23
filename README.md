@@ -264,6 +264,9 @@ The standalone executable appears in the `dist/` folder — perfect for demonstr
 
 ---
 
+## 👇📂 Here is that file & extension below which was used to make the py to exe by using the vscode these [EXTENSION](https://marketplace.visualstudio.com/items?itemName=zynx.py2exe)
+[File_Management_&_Allocation_Simulator](https://github.com/TechYoMinati/File-Management-and-Allocation-Simulator/blob/main/File-Management-%26-Allocation-Simulator/File_Management_%26_Allocation_Simulator.py)
+
 ## 🚀 Download Pre-built Release (No Setup Required)
 If you don't want to build the executable yourself, you can download the latest pre-built version directly from the Releases page:
 
