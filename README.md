@@ -1,6 +1,6 @@
 # File-Management-and-Allocation-Simulator
 OS Diploma Project (File-Management-&amp;-Allocation-Simulator)
-# 👀 GUI Demo how it looks
+# 👀👇🖼️ GUI Demo how it looks shown below 
 <img width="1917" height="1018" alt="Screenshot 2026-07-23 130953" src="https://github.com/user-attachments/assets/a3b86425-a9db-457c-9b60-2a01529d7871" />
 <img width="1917" height="1020" alt="Screenshot 2026-07-23 130313" src="https://github.com/user-attachments/assets/38fc71c7-3ca8-48f5-9ca4-5e7e9f857586" />
 
