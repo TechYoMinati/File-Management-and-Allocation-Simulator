@@ -259,6 +259,11 @@ The standalone executable appears in the `dist/` folder — perfect for demonstr
 
 ---
 
+## 🚀 Download Pre-built Release (No Setup Required)
+If you don't want to build the executable yourself, you can download the latest pre-built version directly from the Releases page:
+
+👉 v1.0.0 — File Management & Allocation Simulator (Windows .exe + Source) Latest:-https://github.com/TechYoMinati/File-Management-and-Allocation-Simulator/releases/tag/v1.0.0
+
 ## 🎓 Explaining This Project in a Viva / To a Professor
 
 A ready 60-second summary:
