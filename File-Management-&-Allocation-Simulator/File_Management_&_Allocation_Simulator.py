@@ -1,6 +1,6 @@
 """
 ================================================================================
- VIRTUAL FILE MANAGER + FILE ALLOCATION SIMULATOR
+FILE MANAGEMENT SIMULATOR + FILE ALLOCATION SIMULATOR
  (Operating Systems Diploma Project)
 ================================================================================
  A GUI "virtual disk" file manager that lets you:
