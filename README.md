@@ -322,9 +322,9 @@ pyinstaller --onefile --windowed --name "VirtualFileManager" File_Management_&_A
 
 The standalone executable appears in the `dist/` folder — perfect for demonstrating on lab machines without Python installed.
 ## 👇📂 Here is that file & extension below which was used to make the py to exe by using the vscode these [EXTENSION](https://marketplace.visualstudio.com/items?itemName=zynx.py2exe)
-File Management & Allocation Simulator
+[File Management & Allocation Simulator](https://github.com/TechYoMinati/File-Management-and-Allocation-Simulator/blob/main/File-Management-%26-Allocation-Simulator/simulator/File_Management_%26_Allocation_Simulator.py)
 ## 👀👇📂 And in this you can also see the Comments (#) for more clearance & explanation of backend phase wise parts given below:)
-File Management & Allocation Simulator
+[File Management & Allocation Simulator](https://github.com/TechYoMinati/File-Management-and-Allocation-Simulator/blob/main/File-Management-%26-Allocation-Simulator/simulator/File_Management_%26_Allocation_Simulator.py)
 ## 🚀 Download Pre-built Release (No Setup Required)
 Grab the latest pre-built version directly from the **Releases** page:)
 
