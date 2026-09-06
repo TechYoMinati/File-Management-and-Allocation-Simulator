@@ -4,7 +4,9 @@
 
 > 👀👇🖼️ **GUI Demo — how it looks shown below**
 
-[![Screenshot 2026-08-07 174604](https://private-user-images.githubusercontent.com/292193160/632934300-2ea38f32-fdcf-4cf2-bb73-64531828e734.png)](https://private-user-images.githubusercontent.com/292193160/632934300-2ea38f32-fdcf-4cf2-bb73-64531828e734.png) [![Screenshot 2026-08-07 174756](https://private-user-images.githubusercontent.com/292193160/632934392-6c35adde-d81c-4a48-83ac-e42e3ea15724.png)](https://private-user-images.githubusercontent.com/292193160/632934392-6c35adde-d81c-4a48-83ac-e42e3ea15724.png)
+<img width="1917" height="1017" alt="Screenshot 2026-09-06 155706" src="https://github.com/user-attachments/assets/a0709401-d905-426f-a49f-16a9ad3d76d6" />
+<img width="1917" height="1020" alt="Screenshot 2026-09-06 155734" src="https://github.com/user-attachments/assets/550a8f53-2df4-4e98-9c95-d9ef314ccd63" />
+
 
 ## 🗂️ File Management Simulator + File Allocation Simulator
 
