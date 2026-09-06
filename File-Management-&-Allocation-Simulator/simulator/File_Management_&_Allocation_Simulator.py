@@ -1356,6 +1356,8 @@ class FileManagerApp:
                                        fill="x", pady=3)
         self._ghost_btn(inner, "COMPARE ALL 3 ALGORITHMS",
                         self.on_compare, C["amber"], fill="x", pady=3)
+        self._ghost_btn(inner, "TEST FRAGMENTATION", self.on_fragmentation_demo,
+                        C["red"], fill="x", pady=3)
         self._ghost_btn(inner, "NEW / CLEAR EDITOR", self.on_new,
                         C["muted"], fill="x", pady=(3, 10))
 
@@ -1378,6 +1380,26 @@ class FileManagerApp:
         self.stats = tk.Label(mid, text="", bg=C["bg"], fg=C["text"],
                               font=("Segoe UI", 10, "bold"))
         self.stats.pack(pady=(8, 0))
+
+        # ----- FILE ALLOCATION TABLE - a persistent directory table drawn
+        # right under the disk, mirroring the reference figures (the
+        # "Star/Start block" table next to Contiguous, the "Index block"
+        # table next to Indexed, and the "start/end" table next to Linked).
+        # Because the disk can hold files saved with different algorithms
+        # at once, each row shows the method + the exact fields a real
+        # directory entry keeps for that method.
+        _, tcard = self._glass_card(mid, "FILE ALLOCATION TABLE",
+                                    accent=C["pink"], fill="x", pady=(8, 0))
+        tcols = ("file", "method", "field1", "field2")
+        self.alloc_tree = ttk.Treeview(tcard, columns=tcols, show="headings",
+                                       height=5)
+        headers = (("file", "File Name", 90), ("method", "Method", 84),
+                   ("field1", "Start / Index Block", 130),
+                   ("field2", "Length / End Block", 130))
+        for col, txt, w in headers:
+            self.alloc_tree.heading(col, text=txt)
+            self.alloc_tree.column(col, width=w, anchor="center")
+        self.alloc_tree.pack(fill="x", padx=10, pady=(0, 10))
 
     # --------------------------------------------------------------------------
     # 3C-3 : RIGHT PANEL - the FILE MANAGER (list of saved files)
@@ -1859,6 +1881,135 @@ class FileManagerApp:
         self._delete_items(sel)
 
     # --------------------------------------------------------------------------
+    # 5.4b EXTERNAL FRAGMENTATION DEMO ("TEST FRAGMENTATION" button)
+    # --------------------------------------------------------------------------
+    # WHY A SCRIPTED DEMO: fragmentation only shows up reliably once the
+    # free space is deliberately CHOPPED INTO SMALL SCATTERED HOLES. Doing
+    # that by hand (save/delete many files) works too (see the HELP page
+    # "Testing Fragmentation"), but this button reproduces it in one click
+    # on a clean 64-block disk so the effect is guaranteed and repeatable:
+    #
+    #   1. Fill the WHOLE disk with 16 small files (4 blocks each, saved
+    #      with Contiguous) -> 0 blocks free.
+    #   2. Delete every OTHER file -> 8 holes of exactly 4 blocks each,
+    #      scattered across the disk. Total free = 32 blocks, but the
+    #      LARGEST single hole is only 4 blocks.
+    #   3. Try to save one NEW file that needs 6 blocks with Contiguous.
+    #      32 free blocks exist overall, yet no run of 6 CONSECUTIVE
+    #      blocks exists -> allocation FAILS. That is EXTERNAL
+    #      FRAGMENTATION: enough total space, wrong shape.
+    #   4. Retry the SAME file with Linked allocation -> it succeeds
+    #      instantly, because Linked/Indexed can grab scattered free
+    #      blocks from anywhere and never suffer external fragmentation.
+    # --------------------------------------------------------------------------
+    def on_fragmentation_demo(self):
+        if self.animating:
+            return
+        if not messagebox.askyesno(
+                "Test External Fragmentation",
+                "This ERASES the current disk and runs a scripted demo:\n\n"
+                "1. Fill all 64 blocks with 16 small files (Contiguous)\n"
+                "2. Delete every other file -> 8 scattered 4-block holes\n"
+                "   (32 blocks free in total, largest hole = 4 blocks)\n"
+                "3. Try to save a 6-block file with Contiguous -> FAILS\n"
+                "   (external fragmentation, even though 32 > 6 free)\n"
+                "4. Retry the same file with Linked -> SUCCEEDS\n\n"
+                "Erase the disk and run the demo?"):
+            return
+        self.disk.reset()
+        self.file_colors = {}
+        self.color_i = 0
+        self.editing_file = None
+        self._log("=== FRAGMENTATION TEST STARTED (disk cleared) ===")
+        self._refresh_all()
+        self.root.after(250, lambda: self._frag_fill_step(0))
+
+    def _frag_fill_step(self, i, n=16):
+        """Step 1: fill the whole disk with n small (4-block) Contiguous
+        files, one at a time, so the grid visibly fills up."""
+        if i >= n:
+            self._log(f"Step 1 done: disk is FULL ({n} files x 4 blocks "
+                      f"= {n * 4} blocks). Free blocks: "
+                      f"{self.disk.free_count()}.")
+            self.root.after(500, self._frag_delete_step)
+            return
+        name = f"frag{i + 1:02d}.dat"
+        content = "F" * (VirtualDisk.BLOCK_SIZE * 4)   # exactly 4 blocks
+        blocks, size = VirtualDisk.blocks_needed(content, "Contiguous")
+        planned, err = self.disk.plan("Contiguous", blocks)
+        if planned is None:
+            self._log(f"Unexpected setup failure at {name}: {err}")
+            return
+        self.disk.commit(name, content, "Contiguous", planned)
+        self.file_colors[name] = FILE_COLORS[self.color_i % len(FILE_COLORS)]
+        self.color_i += 1
+        self._refresh_all()
+        self.root.after(60, lambda: self._frag_fill_step(i + 1, n))
+
+    def _frag_delete_step(self):
+        """Step 2: delete every OTHER file, punching 8 scattered 4-block
+        holes into the disk (no single hole big enough for 6 blocks)."""
+        doomed = [f"frag{i + 1:02d}.dat" for i in range(0, 16, 2)]
+        for name in doomed:
+            self.disk.delete_file(name)
+        self._log(f"Step 2 done: deleted {len(doomed)} files -> "
+                  f"{doomed}")
+        self._log("Result: 8 scattered holes of 4 blocks each "
+                  f"({self.disk.free_count()} blocks free total, but the "
+                  "LARGEST single hole is still only 4 blocks).")
+        self._refresh_all()
+        self.root.after(600, self._frag_fail_step)
+
+    def _frag_fail_step(self):
+        """Step 3: try a 6-block file with Contiguous -> must fail."""
+        content = "N" * (VirtualDisk.BLOCK_SIZE * 6 - 10)  # -> 6 blocks
+        name = "newfile.dat"
+        blocks, size = VirtualDisk.blocks_needed(content, "Contiguous")
+        planned, err = self.disk.plan("Contiguous", blocks)
+        self._log(f"Step 3: trying to save '{name}' ({blocks} blocks "
+                  "needed) with CONTIGUOUS allocation ...")
+        if planned is not None:
+            # extremely unlikely with this exact demo layout, but stay safe
+            self._log("Unexpectedly succeeded - disk layout differed from "
+                      "the expected demo pattern.")
+            self._frag_content = content
+            self.root.after(400, self._frag_retry_linked)
+            return
+        self._log(f"FAILED: {err}")
+        self._log("This is EXTERNAL FRAGMENTATION: "
+                  f"{self.disk.free_count()} blocks are free overall "
+                  f"(more than the {blocks} needed), but they are split "
+                  "into holes too small to hold the file contiguously.")
+        messagebox.showwarning(
+            "External Fragmentation reproduced",
+            f"Contiguous allocation FAILED for '{name}':\n{err}\n\n"
+            f"{self.disk.free_count()} blocks are free in total, but the "
+            "largest single hole is only 4 blocks - not enough for a "
+            f"{blocks}-block file laid out contiguously.\n\n"
+            "Watch the grid: the same file will now be retried with "
+            "LINKED allocation, which can use any scattered free blocks.")
+        self._frag_content = content
+        self.root.after(500, self._frag_retry_linked)
+
+    def _frag_retry_linked(self):
+        """Step 4: the SAME file succeeds instantly with Linked, since it
+        can use scattered free blocks - no external fragmentation."""
+        content = self._frag_content
+        name = "newfile.dat"
+        blocks, size = VirtualDisk.blocks_needed(content, "Linked")
+        planned, err = self.disk.plan("Linked", blocks)
+        self._log(f"Step 4: retrying '{name}' with LINKED allocation "
+                  f"({blocks} blocks needed) ...")
+        if planned is None:
+            self._log(f"FAILED even with Linked: {err}")
+            return
+        self.file_colors[name] = FILE_COLORS[self.color_i % len(FILE_COLORS)]
+        self.color_i += 1
+        self._log("SUCCESS: Linked allocation grabbed scattered free "
+                  f"blocks {planned} - no external fragmentation problem.")
+        self._animate_allocation(name, content, "Linked", planned)
+
+    # --------------------------------------------------------------------------
     # 5.5 COMPARE : SPLIT-WINDOW comparison of ALL 3 algorithms side by side.
     #
     # Pressing "COMPARE ALL 3 ALGORITHMS" opens ONE window that is divided
@@ -2175,6 +2326,7 @@ class FileManagerApp:
         cell_h = (h - pad * 2) / rows
         placed_set = set(planned[:placed]) if planned else set()
         last = planned[placed - 1] if planned and placed > 0 else None
+        centers = {}
 
         for i in range(self.disk.total_blocks):
             r, c0 = divmod(i, cols)
@@ -2182,6 +2334,7 @@ class FileManagerApp:
             y1 = pad + r * cell_h + 2
             x2 = pad + (c0 + 1) * cell_w - 2
             y2 = pad + (r + 1) * cell_h - 2
+            centers[i] = ((x1 + x2) / 2, (y1 + y2) / 2)
             owner = base[i]
             label = str(i)
 
@@ -2207,6 +2360,25 @@ class FileManagerApp:
                                 width=width)
             cv.create_text((x1 + x2) / 2, (y1 + y2) / 2, text=label,
                            fill=txt_col, font=("Segoe UI", 7, "bold"))
+
+        # ----- pointer arrows for the blocks placed SO FAR in this panel's
+        # animation (Linked chain / Indexed fan-out), same visual language
+        # as the main "DISK BLOCKS - LIVE VIEW" grid.
+        if planned and placed > 0:
+            done = planned[:placed]
+            if method == "Indexed":
+                idx = planned[0]
+                data_done = [b for b in done[1:]]
+                if idx in centers and data_done:
+                    fake = {"__cmp__": {"method": "Indexed",
+                                        "index_block": idx,
+                                        "index_table": data_done}}
+                    self._draw_pointer_arrows(cv, fake, centers,
+                                              color_override=accent)
+            elif method == "Linked":
+                fake = {"__cmp__": {"method": "Linked", "blocks": done}}
+                self._draw_pointer_arrows(cv, fake, centers,
+                                          color_override=accent)
 
     # --------------------------------------------------------------------------
     # 5.6 NEW / CLEAR the editor
@@ -2246,12 +2418,18 @@ class FileManagerApp:
         cell_w = (w - pad * 2) / cols
         cell_h = (h - pad * 2) / rows
 
+        # centre of every cell, keyed by block number - filled in below and
+        # reused afterwards to draw the pointer ARROWS (like the reference
+        # "Indexed Allocation" / "Linked Allocation" textbook diagrams)
+        centers = {}
+
         for i in range(self.disk.total_blocks):
             r, c0 = divmod(i, cols)
             x1 = pad + c0 * cell_w + 3
             y1 = pad + r * cell_h + 3
             x2 = pad + (c0 + 1) * cell_w - 3
             y2 = pad + (r + 1) * cell_h - 3
+            centers[i] = ((x1 + x2) / 2, (y1 + y2) / 2)
             owner = self.disk.blocks[i]
 
             if owner is None:
@@ -2288,6 +2466,59 @@ class FileManagerApp:
             cv.create_text((x1 + x2) / 2, (y1 + y2) / 2, text=label,
                            fill=txt_col, font=("Segoe UI", 9, "bold"))
 
+        # ----- POINTER ARROWS - drawn LAST so they sit on top of the grid,
+        # exactly like the "Indexed Allocation" (index -> each data block,
+        # fan-out) and "Linked Allocation" (block -> next block, chain)
+        # reference diagrams the user attached.
+        self._draw_pointer_arrows(cv, self.disk.files, centers)
+
+    # --------------------------------------------------------------------------
+    # ARROW OVERLAY : redraws the same fan-out / chain arrows seen in the
+    # reference images, on top of an already-drawn block grid.
+    #   Indexed -> curved arrow from the INDEX block to EVERY data block
+    #              (fan-out, matching the "Indexed Allocation" picture)
+    #   Linked  -> straight arrow from each block to the NEXT block in the
+    #              chain (matching the "Linked Allocation" picture)
+    # `files_dict` may be a real self.disk.files directory OR a synthetic
+    # one-file dict (used by the compare-view mini grids).
+    # --------------------------------------------------------------------------
+    def _draw_pointer_arrows(self, cv, files_dict, centers, tag="arrow",
+                             color_override=None):
+        for name, f in files_dict.items():
+            neon = color_override or self.file_colors.get(name, "#7C8DB0")
+            method = f.get("method")
+
+            if method == "Indexed":
+                idx = f.get("index_block")
+                table = f.get("index_table") or []
+                if idx is None or idx not in centers:
+                    continue
+                ix, iy = centers[idx]
+                for data_b in table:
+                    if data_b not in centers:
+                        continue
+                    dx, dy = centers[data_b]
+                    # gentle curve (quadratic-ish via a midpoint bow) so
+                    # overlapping fan-out arrows stay readable, same feel
+                    # as the reference "Indexed Allocation" diagram
+                    mx = (ix + dx) / 2 + (iy - dy) * 0.12
+                    my = (iy + dy) / 2 + (dx - ix) * 0.12
+                    cv.create_line(ix, iy, mx, my, dx, dy,
+                                   smooth=True, splinesteps=18,
+                                   fill=neon, width=1, arrow=tk.LAST,
+                                   arrowshape=(7, 9, 3), tags=tag)
+
+            elif method == "Linked":
+                chain = f.get("blocks") or []
+                for a, b in zip(chain, chain[1:]):
+                    if a not in centers or b not in centers:
+                        continue
+                    ax, ay = centers[a]
+                    bx, by = centers[b]
+                    cv.create_line(ax, ay, bx, by,
+                                   fill=neon, width=1, arrow=tk.LAST,
+                                   arrowshape=(7, 9, 3), tags=tag)
+
     def _update_stats(self):
         """Refresh the usage line under the disk grid (used/free + legend)."""
         used = self.disk.total_blocks - self.disk.free_count()
@@ -2320,12 +2551,36 @@ class FileManagerApp:
         # the old selection is gone -> reset the directory-entry preview
         self._show_dir_entry()
 
+    def _refresh_alloc_table(self):
+        """Rebuild the persistent FILE ALLOCATION TABLE (mirrors the
+        reference figures): one row per saved file, with the exact
+        fields a real directory keeps for that file's allocation method.
+          Contiguous -> field1 = Start block,  field2 = Length
+          Linked     -> field1 = Start block,  field2 = End block
+          Indexed    -> field1 = Index block,  field2 = (pointer count)
+        """
+        if not hasattr(self, "alloc_tree"):
+            return
+        self.alloc_tree.delete(*self.alloc_tree.get_children())
+        for name, f in self.disk.files.items():
+            method = f["method"]
+            if method == "Contiguous":
+                field1, field2 = f["start"], f["length"]
+            elif method == "Linked":
+                field1, field2 = f["start"], f["blocks"][-1]
+            else:  # Indexed
+                field1 = f"{f['index_block']} *"
+                field2 = f"{len(f['index_table'])} ptr(s)"
+            self.alloc_tree.insert("", "end", values=(name, method,
+                                                       field1, field2))
+
     def _refresh_all(self):
         """One call to bring EVERY view back in sync with the disk state:
         the block grid, the usage stats and the file table."""
         self._draw_disk()
         self._update_stats()
         self._refresh_table()
+        self._refresh_alloc_table()
 
     def _log(self, msg):
         """Append one line to the terminal-style activity log and scroll
@@ -2378,7 +2633,47 @@ STEP-BY-STEP GUIDE
    - Save and delete several files to create "holes", then try
      saving a big file with Contiguous - it may FAIL even though
      enough total space exists. That is EXTERNAL FRAGMENTATION,
-     and Linked/Indexed will still succeed!
+     and Linked/Indexed will still succeed! Or just press
+     "TEST FRAGMENTATION" for a one-click scripted demo of this.
+"""),
+        ("Testing Fragmentation", """
+HOW TO TEST EXTERNAL FRAGMENTATION
+===================================
+
+EXTERNAL FRAGMENTATION only affects CONTIGUOUS allocation: it
+happens when total free space is enough, but it is split into
+holes too small to hold a new file in one continuous run.
+Linked and Indexed allocation never suffer from it, because
+they can use any scattered free block.
+
+OPTION A - ONE CLICK (recommended):
+   Press "TEST FRAGMENTATION" in the left panel. It scripts the
+   whole scenario on a clean disk:
+     1. Fills all 64 blocks with 16 files (4 blocks each).
+     2. Deletes every OTHER file -> 8 scattered 4-block holes
+        (32 blocks free, but no single hole bigger than 4).
+     3. Tries to save a new 6-block file with Contiguous ->
+        FAILS (not enough CONSECUTIVE space, even though 32
+        free blocks exist overall).
+     4. Retries the same file with Linked -> SUCCEEDS, because
+        it just grabs 6 free blocks from wherever they are.
+   Watch the disk grid + activity log for every step.
+
+OPTION B - DO IT MANUALLY:
+   1. Save several files with CONTIGUOUS allocation back-to-back
+      (e.g. 5-6 small files) so the disk fills up.
+   2. DELETE every second file - this punches holes between the
+      survivors instead of leaving one big empty region.
+   3. Try to SAVE a new file (Contiguous) that is bigger than any
+      single hole but smaller than the total free space - watch
+      it FAIL with "No contiguous hole of that size exists".
+   4. Change the Algorithm dropdown to Linked or Indexed and
+      SAVE the exact same content again - it succeeds, because
+      those methods scatter blocks instead of needing one run.
+   5. Use "COMPARE ALL 3 ALGORITHMS" at any point to see all
+      three attempt the SAME file on the SAME disk side by side -
+      Contiguous will show the failure while Linked/Indexed
+      show a successful, scattered placement.
 """),
         ("How the Algorithms Work", """
 THE 3 CLASSIC FILE ALLOCATION ALGORITHMS
